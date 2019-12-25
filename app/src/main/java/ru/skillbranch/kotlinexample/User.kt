@@ -24,7 +24,7 @@ class User private constructor(
             .map { it.first().toUpperCase() }
             .joinToString(" ")
 
-    private var phone: String? = null
+    var phone: String? = null
         set(value) {
             field = value?.replace("[^+\\d]".toRegex(),"")
         }
@@ -43,7 +43,7 @@ class User private constructor(
     private lateinit var passwordHash: String
 
     @VisibleForTesting(otherwise = VisibleForTesting.NONE)
-    private var accessCode: String? = null
+    var accessCode: String? = null
 
     //for email
     constructor(
@@ -76,7 +76,11 @@ class User private constructor(
         check(email.isNullOrBlank() || rawPhone.isNullOrBlank()) {"Email or phone must be not blank"}
 
         phone = rawPhone
-        login = email ?: phone!!
+        login = when {
+            email != null -> email
+            Regex("\\+\\d{11}").containsMatchIn(phone.toString()) ->  Regex("[-()\\s]").replace(phone!!, "")
+            else -> throw IllegalArgumentException("Enter a valid phone number starting with a + and containing 11 digits")
+        }
 
         userInfo = """
             firstName: $firstName
@@ -86,15 +90,19 @@ class User private constructor(
             initials: $initials
             email: $email
             phone: $phone
-            meta: $meta 
+            meta: $meta
         """.trimIndent()
     }
 
+    fun checkAccessCode(accessCode: String) = this.accessCode == accessCode
+
     fun checkPassword(pass: String) = encrypt(pass) == passwordHash
+
+    fun changeAccessCode() { this.accessCode = generateAccessCode()}
 
     fun changePassword(oldPass: String, newPass: String) {
         if (checkPassword(oldPass)) passwordHash = encrypt(newPass)
-        else IllegalArgumentException("The entered password does not match the current password")
+        else throw IllegalArgumentException("The entered password does not match the current password")
     }
 
     private fun encrypt(password: String): String = salt.plus(password).md5()
@@ -109,6 +117,10 @@ class User private constructor(
                 }
             }
         }.toString()
+    }
+
+    private fun checkPhoneNumber(phone: String?) : Boolean {
+        return Regex("\\+\\d{11}").containsMatchIn(phone.toString())
     }
 
     private fun sendAccessCodeToUser(phone: String?, code: String) {
@@ -132,7 +144,7 @@ class User private constructor(
             val (firstName, lastName) = fullName.fullNameToPair()
 
             return when{
-                !phone.isNullOrBlank() -> User(firstName, lastName)
+                !phone.isNullOrBlank() -> User(firstName, lastName, phone)
                 !email.isNullOrBlank() && !password.isNullOrBlank() -> User(firstName, lastName, email, password)
                 else -> throw IllegalArgumentException("Email or phone must be not null or blank")
             }
